@@ -1,76 +1,63 @@
 const fs = require("fs");
+const path = require("path");
 const readline = require("readline-sync");
+const chalk = new (require("chalk").Chalk)();
 const bcrypt = require("bcrypt");
-const chalk = require("chalk");
+const { detectBruteForce } = require("./detector");
+const { safeReadJSON, safeWriteJSON } = require("./utils");
 
-const USERS_FILE = "./data/users.json";
-const LOGINS_FILE = "./data/logins.json";
+const USERS_FILE = path.join(__dirname, "data", "users.json");
+const LOGINS_FILE = path.join(__dirname, "data", "logins.json");
 
-function loadUsers() {
-  return JSON.parse(fs.readFileSync(USERS_FILE, "utf-8"));
-}
-
-function saveUsers(users) {
-  fs.writeFileSync(USERS_FILE, JSON.stringify(users, null, 2));
-}
-
-function logAttempt(username, success) {
-  const logs = JSON.parse(fs.readFileSync(LOGINS_FILE, "utf-8"));
-  logs.push({
-    username,
-    time: new Date().toISOString(),
-    success
-  });
-  fs.writeFileSync(LOGINS_FILE, JSON.stringify(logs, null, 2));
-}
+const saltRounds = 10;
 
 function signup() {
-  const users = loadUsers();
-  const username = readline.question("Choose username: ");
-  const existingUser = users.find(u => u.username === username);
+  const users = safeReadJSON(USERS_FILE);
+  const username = readline.question("Choose a username: ");
+  const password = readline.question("Choose a password: ", { hideEchoBack: true });
 
-  if (existingUser) {
+  if (users.find(u => u.username === username)) {
     console.log(chalk.red("❌ Username already exists."));
     return;
   }
 
-  const password = readline.questionNewPassword("Choose password: ", {
-    min: 6,
-    max: 20,
-    confirmMessage: "Confirm password: ",
-    unmatchMessage: "❌ Passwords do not match."
-  });
+  const hashedPassword = bcrypt.hashSync(password, saltRounds);
+  users.push({ username, password: hashedPassword, blocked: false });
 
-  const hashed = bcrypt.hashSync(password, 10);
-  users.push({ username, password: hashed });
-  saveUsers(users);
-
+  safeWriteJSON(USERS_FILE, users);
   console.log(chalk.green("✅ Signup successful!"));
 }
 
 function login() {
-  const users = loadUsers();
+  const users = safeReadJSON(USERS_FILE);
+  const logins = safeReadJSON(LOGINS_FILE);
+
   const username = readline.question("Username: ");
   const password = readline.question("Password: ", { hideEchoBack: true });
 
   const user = users.find(u => u.username === username);
+
   if (!user) {
     console.log(chalk.red("❌ User not found."));
-    logAttempt(username, false);
-    return;
+    logins.push({ username, success: false, time: new Date().toISOString() });
+  } else if (user.blocked) {
+    console.log(chalk.red("🚫 This user is blocked due to multiple failed logins."));
+    logins.push({ username, success: false, time: new Date().toISOString() });
+  } else {
+    const isPasswordCorrect = bcrypt.compareSync(password, user.password);
+
+    if (isPasswordCorrect) {
+      console.log(chalk.green("✅ Login successful!"));
+      logins.push({ username, success: true, time: new Date().toISOString() });
+    } else {
+      console.log(chalk.red("❌ Incorrect password."));
+      logins.push({ username, success: false, time: new Date().toISOString() });
+    }
   }
 
-  const match = bcrypt.compareSync(password, user.password);
-  if (match) {
-    console.log(chalk.green("✅ Login successful!"));
-    logAttempt(username, true);
-  } else {
-    console.log(chalk.red("❌ Incorrect password."));
-    logAttempt(username, false);
-  }
+  detectBruteForce(username, logins, users);
+  safeWriteJSON(LOGINS_FILE, logins);
+  safeWriteJSON(USERS_FILE, users);
 }
 
 module.exports = { signup, login };
-
-require("child_process").execSync("node autoPush.js");
-
