@@ -2,11 +2,12 @@ const fs = require('fs');
 const path = require('path');
 const { parse } = require('json2csv');
 const chalk = new (require("chalk").Chalk)();
+const { safeReadJSON } = require('./utils'); // ✅ Add auto-heal util
 
 const LOGINS_FILE = path.join(__dirname, 'data', 'logins.json');
 
 function exportLogsToCSV() {
-  const logs = JSON.parse(fs.readFileSync(LOGINS_FILE, 'utf-8'));
+  const logs = safeReadJSON(LOGINS_FILE); // ✅ Uses safe auto-healing read
 
   if (logs.length === 0) {
     console.log(chalk.yellow("⚠️ No login attempts found to export."));
