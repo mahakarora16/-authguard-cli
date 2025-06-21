@@ -47,8 +47,18 @@ function login() {
     const isPasswordCorrect = bcrypt.compareSync(password, user.password);
 
     if (isPasswordCorrect) {
-      console.log(chalk.green("✅ Login successful!"));
-      logins.push({ username, success: true, time: new Date().toISOString() });
+      const otp = Math.floor(100000 + Math.random() * 900000);
+      console.log(chalk.cyan(`📱 Your AuthGuard 2FA code: ${otp}`));
+
+      const enteredOtp = readline.question("Enter 2FA code: ");
+
+      if (enteredOtp !== otp.toString()) {
+        console.log(chalk.red("❌ Invalid 2FA code."));
+        logins.push({ username, success: false, time: new Date().toISOString() });
+      } else {
+        console.log(chalk.green("✅ Login successful!"));
+        logins.push({ username, success: true, time: new Date().toISOString() });
+      }
     } else {
       console.log(chalk.red("❌ Incorrect password."));
       logins.push({ username, success: false, time: new Date().toISOString() });
@@ -59,5 +69,6 @@ function login() {
   safeWriteJSON(LOGINS_FILE, logins);
   safeWriteJSON(USERS_FILE, users);
 }
+
 
 module.exports = { signup, login };
